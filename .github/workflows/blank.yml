@@ -9,17 +9,24 @@ jobs:
   download-and-commit:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Важно: даем разрешение на запись
-      
+      contents: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          persist-credentials: true  # Сохраняем учетные данные для git
-          fetch-depth: 0  # Полная история коммитов
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Create file if missing
+        run: |
+          if [ ! -f hosts.txt ]; then
+            touch hosts.txt
+            echo "Initial empty file" > hosts.txt
+          fi
 
       - name: Download hosts file
-        run: curl -s -o hosts.txt https://schakal.ru/hosts/hosts.txt
+        run: curl -f -s -o hosts.tmp https://schakal.ru/hosts/hosts.txt && mv hosts.tmp hosts.txt
 
       - name: Commit changes
         run: |
@@ -27,7 +34,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
           # Проверяем изменения
-          if git diff --exit-code --quiet; then
+          if [ -z "$(git status --porcelain hosts.txt)" ]; then
             echo "No changes detected"
           else
             git add hosts.txt
