@@ -1,0 +1,26 @@
+name: Update Hosts File
+
+on:
+  schedule:
+    # Запускать каждый день в 00:00 UTC
+    - cron: "30 4 * * *"
+  workflow_dispatch:  # Разрешить ручной запуск
+
+jobs:
+  download-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download hosts file
+        run: |
+          curl -s -o hosts.txt https://schakal.ru/hosts/hosts.txt
+
+      - name: Commit changes
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add hosts.txt
+          git commit -m "Update hosts file" || echo "No changes to commit"
+          git push
