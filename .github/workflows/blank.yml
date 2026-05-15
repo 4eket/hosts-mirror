@@ -8,6 +8,7 @@ on:
 jobs:
   download-and-commit:
     runs-on: ubuntu-latest
+
     permissions:
       contents: write
 
@@ -18,50 +19,80 @@ jobs:
           persist-credentials: true
           fetch-depth: 0
 
-      - name: Create file if missing
+      - name: Create hosts file if missing
         run: |
+          set -euo pipefail
+
           if [ ! -f hosts.txt ]; then
+            echo "Creating hosts.txt..."
             touch hosts.txt
-            echo "Initial empty file" > hosts.txt
           fi
 
-      - name: Download hosts file with exponential backoff
+      - name: Download hosts file
         run: |
-          echo "Downloading hosts file with exponential backoff..."
+          set -euo pipefail
 
-          max_attempts=10
-          delay=5
+          URL="https://schakal.ru/hosts/hosts.txt"
 
-          for ((i=1; i<=max_attempts; i++)); do
-            echo "Attempt $i..."
+          MAX_ATTEMPTS=5
+          DELAY=15
 
-            if curl -f -s --max-time 30 -o hosts.tmp https://schakal.ru/hosts/hosts.txt; then
-              mv hosts.tmp hosts.txt
-              echo "Download successful"
-              exit 0
-            else
-              echo "Attempt $i failed"
+          echo "Starting download..."
 
-              if [ $i -lt $max_attempts ]; then
-                echo "Waiting ${delay}s before retry..."
-                sleep $delay
-                delay=$((delay * 2))
+          for ((i=1; i<=MAX_ATTEMPTS; i++)); do
+            echo ""
+            echo "=============================="
+            echo "Attempt $i of $MAX_ATTEMPTS"
+            echo "=============================="
+
+            if curl -4 -L \
+              --fail \
+              --show-error \
+              --silent \
+              --connect-timeout 15 \
+              --max-time 120 \
+              --retry 0 \
+              -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) Gecko/20100101 Firefox/138.0" \
+              -o hosts.tmp \
+              "$URL"
+            then
+              echo "Download completed"
+
+              if [ ! -s hosts.tmp ]; then
+                echo "Downloaded file is empty"
+                rm -f hosts.tmp
+                exit 1
               fi
+
+              mv hosts.tmp hosts.txt
+
+              echo "hosts.txt updated successfully"
+              exit 0
+            fi
+
+            echo "Attempt $i failed"
+
+            if [ "$i" -lt "$MAX_ATTEMPTS" ]; then
+              echo "Waiting ${DELAY}s before retry..."
+              sleep "$DELAY"
             fi
           done
 
-          echo "All attempts failed"
+          echo "All download attempts failed"
           exit 1
 
-      - name: Commit changes
+      - name: Commit and push changes
         run: |
+          set -euo pipefail
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          if [ -z "$(git status --porcelain hosts.txt)" ]; then
+
+          if git diff --quiet hosts.txt; then
             echo "No changes detected"
-          else
-            git add hosts.txt
-            git commit -m "Auto-update hosts file"
-            git push
+            exit 0
           fi
+
+          git add hosts.txt
+          git commit -m "Auto-update hosts file"
+          git push
